@@ -1,0 +1,242 @@
+InsertOrderDetails Procedure:
+CREATE PROCEDURE InsertOrderDetails
+    @OrderID INT,
+    @ProductID INT,
+    @UnitPrice DECIMAL(10, 2) = NULL,
+    @Quantity INT,
+    @Discount DECIMAL(4, 2) = 0
+AS
+BEGIN
+    DECLARE @Stock INT, @ReorderLevel INT, @DefaultPrice DECIMAL(10, 2);
+    
+    -- Get current stock and reorder level
+    SELECT @Stock = UnitsInStock, @ReorderLevel = ReorderLevel, @DefaultPrice = UnitPrice
+    FROM Products
+    WHERE ProductID = @ProductID;
+    
+    -- Check if there is enough stock
+    IF @Stock < @Quantity
+    BEGIN
+        PRINT 'Insufficient stock. Order cannot be placed.';
+        RETURN;
+    END
+    
+    -- Use default UnitPrice if not provided
+    IF @UnitPrice IS NULL
+    BEGIN
+        SET @UnitPrice = @DefaultPrice;
+    END
+
+    -- Insert the order detail
+    INSERT INTO [Order Details] (OrderID, ProductID, UnitPrice, Quantity, Discount)
+    VALUES (@OrderID, @ProductID, @UnitPrice, @Quantity, @Discount);
+
+    -- Check if the insertion was successful
+    IF @@ROWCOUNT = 0
+    BEGIN
+        PRINT 'Failed to place the order. Please try again.';
+        RETURN;
+    END
+
+
+
+    -- Update the stock
+    UPDATE Products
+    SET UnitsInStock = UnitsInStock - @Quantity
+    WHERE ProductID = @ProductID;
+
+    -- Check if the stock drops below the reorder level
+    IF @Stock - @Quantity < @ReorderLevel
+    BEGIN
+        PRINT 'Warning: Stock level below reorder level.';
+    END
+END;
+
+
+
+ UpdateOrderDetails Procedure:
+CREATE PROCEDURE UpdateOrderDetails
+    @OrderID INT,
+    @ProductID INT,
+    @UnitPrice DECIMAL(10, 2) = NULL,
+    @Quantity INT = NULL,
+    @Discount DECIMAL(4, 2) = NULL
+AS
+BEGIN
+    DECLARE @CurrentUnitPrice DECIMAL(10, 2), @CurrentQuantity INT, @CurrentDiscount DECIMAL(4, 2);
+
+    -- Get current values
+    SELECT @CurrentUnitPrice = UnitPrice, @CurrentQuantity = Quantity, @CurrentDiscount = Discount
+    FROM [Order Details]
+    WHERE OrderID = @OrderID AND ProductID = @ProductID;
+
+    -- Use current values if new values are not provided
+    SET @UnitPrice = ISNULL(@UnitPrice, @CurrentUnitPrice);
+    SET @Quantity = ISNULL(@Quantity, @CurrentQuantity);
+    SET @Discount = ISNULL(@Discount, @CurrentDiscount);
+
+    -- Update the order detail
+    UPDATE [Order Details]
+    SET UnitPrice = @UnitPrice, Quantity = @Quantity, Discount = @Discount
+    WHERE OrderID = @OrderID AND ProductID = @ProductID;
+
+    -- Update the stock
+    UPDATE Products
+    SET UnitsInStock = UnitsInStock - (@Quantity - @CurrentQuantity)
+    WHERE ProductID = @ProductID;
+END;
+
+
+
+GetOrderDetails Procedure:
+CREATE PROCEDURE GetOrderDetails
+    @OrderID INT
+AS
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM [Order Details] WHERE OrderID = @OrderID)
+    BEGIN
+        PRINT 'The OrderID ' + CAST(@OrderID AS VARCHAR) + ' does not exist';
+        RETURN 1;
+    END
+
+    SELECT *
+    FROM [Order Details]
+    WHERE OrderID = @OrderID;
+END;
+
+
+
+DeleteOrderDetails Procedure:
+CREATE PROCEDURE DeleteOrderDetails
+    @OrderID INT,
+    @ProductID INT
+AS
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM [Order Details] WHERE OrderID = @OrderID AND ProductID = @ProductID)
+    BEGIN
+        PRINT 'Invalid parameters. OrderID or ProductID does not exist.';
+        RETURN -1;
+    END
+
+    DELETE FROM [Order Details]
+    WHERE OrderID = @OrderID AND ProductID = @ProductID;
+END;
+
+
+
+FormatDateMMDDYYYY Function:
+CREATE FUNCTION FormatDateMMDDYYYY(@InputDate DATETIME)
+RETURNS VARCHAR(10)
+AS
+BEGIN
+    RETURN CONVERT(VARCHAR(10), @InputDate, 101);
+END;
+
+
+
+FormatDateYYYYMMDD Function:
+CREATE FUNCTION FormatDateYYYYMMDD(@InputDate DATETIME)
+RETURNS VARCHAR(10)
+AS
+BEGIN
+    RETURN CONVERT(VARCHAR(10), @InputDate, 112);
+END;
+
+
+
+vwCustomerOrders View:
+CREATE VIEW vwCustomerOrders AS
+SELECT 
+    c.CompanyName, 
+    o.OrderID, 
+    o.OrderDate, 
+    od.ProductID, 
+    p.ProductName, 
+    od.Quantity, 
+    od.UnitPrice, 
+    od.Quantity * od.UnitPrice AS TotalPrice
+FROM Orders o
+JOIN [Order Details] od ON o.OrderID = od.OrderID
+JOIN Products p ON od.ProductID = p.ProductID
+JOIN Customers c ON o.CustomerID = c.CustomerID;
+vwCustomerOrdersYesterday View:
+
+
+
+CREATE VIEW
+vwCustomerOrdersYesterday AS
+SELECT 
+    c.CompanyName, 
+    o.OrderID, 
+    o.OrderDate, 
+    od.ProductID, 
+    p.ProductName, 
+    od.Quantity, 
+    od.UnitPrice, 
+    od.Quantity * od.UnitPrice AS TotalPrice
+FROM Orders o
+JOIN [Order Details] od ON o.OrderID = od.OrderID
+JOIN Products p ON od.ProductID = p.ProductID
+JOIN Customers c ON o.CustomerID = c.CustomerID
+WHERE CONVERT(DATE, o.OrderDate) = CONVERT(DATE, GETDATE() - 1);
+
+
+
+MyProducts View:
+CREATE VIEW MyProducts AS
+SELECT 
+    p.ProductID, 
+    p.ProductName, 
+    p.QuantityPerUnit, 
+    p.UnitPrice, 
+    s.CompanyName, 
+    c.CategoryName
+FROM Products p
+JOIN Suppliers s ON p.SupplierID = s.SupplierID
+JOIN Categories c ON p.CategoryID = c.CategoryID
+WHERE p.Discontinued = 0;
+Instead of Delete Trigger on Orders:
+
+
+
+CREATE TRIGGER InsteadOfDeleteOrders
+ON Orders
+INSTEAD OF DELETE
+AS
+BEGIN
+    DELETE FROM [Order Details]
+    WHERE OrderID IN (SELECT OrderID FROM DELETED);
+
+    DELETE FROM Orders
+    WHERE OrderID IN (SELECT OrderID FROM DELETED);
+END;
+
+
+CheckStockBeforeInsert Trigger on Order Details:
+CREATE TRIGGER CheckStockBeforeInsert
+ON [Order Details]
+INSTEAD OF INSERT
+AS
+BEGIN
+    DECLARE @ProductID INT, @Quantity INT, @UnitsInStock INT;
+
+    SELECT @ProductID = i.ProductID, @Quantity = i.Quantity
+    FROM INSERTED i;
+
+    SELECT @UnitsInStock = UnitsInStock
+    FROM Products
+    WHERE ProductID = @ProductID;
+
+    IF @UnitsInStock >= @Quantity
+    BEGIN
+        INSERT INTO [Order Details] (OrderID, ProductID, UnitPrice, Quantity, Discount)
+        SELECT OrderID, ProductID, UnitPrice, Quantity, Discount
+        FROM INSERTED;
+
+        UPDATE Products
+        SET UnitsInStock = UnitsInStock - @Quantity
+        WHERE ProductID = @ProductID;
+    END
+    ELSE
+    BEGIN
+        PRINT 'Order could not be filled because of insufficient stock.';
