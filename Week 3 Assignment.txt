@@ -1,0 +1,362 @@
+Task 1 
+
+-- Step 1: Assign each task a group ID based on consecutive dates
+WITH ConsecutiveTasks AS (
+    SELECT
+        Task_ID,
+        Start_Date,
+        End_Date,
+        -- Using LAG to check if the previous task's End_Date is consecutive
+        CASE 
+            WHEN DATE_SUB(Start_Date, INTERVAL 1 DAY) = LAG(End_Date) OVER (ORDER BY Start_Date)
+            THEN 0
+            ELSE 1
+        END AS NewGroup
+    FROM
+        Projects
+),
+
+-- Step 2: Create a cumulative sum to generate group IDs
+ProjectGroups AS (
+    SELECT
+        Task_ID,
+        Start_Date,
+        End_Date,
+        SUM(NewGroup) OVER (ORDER BY Start_Date) AS GroupID
+    FROM
+        ConsecutiveTasks
+),
+
+-- Step 3: Group by the generated GroupID to get project start and end dates
+GroupedProjects AS (
+    SELECT
+        MIN(Start_Date) AS ProjectStartDate,
+        MAX(End_Date) AS ProjectEndDate
+    FROM
+        ProjectGroups
+    GROUP BY
+        GroupID
+)
+
+-- Step 4: Select and order the results as required
+SELECT
+    ProjectStartDate,
+    ProjectEndDate
+FROM
+    GroupedProjects
+ORDER BY
+    DATEDIFF(ProjectEndDate, ProjectStartDate),
+    ProjectStartDate;
+
+
+
+Task 2 
+
+SELECT
+    S1.Name AS Student_Name
+FROM
+    Students S1
+JOIN
+    Friends F ON S1.ID = F.ID
+JOIN
+    Packages P1 ON S1.ID = P1.ID
+JOIN
+    Packages P2 ON F.Friend_ID = P2.ID
+WHERE
+    P2.Salary > P1.Salary
+ORDER BY
+    P2.Salary;
+
+
+
+
+Task 3
+
+
+SELECT DISTINCT
+    F1.X, F1.Y
+FROM
+    Functions F1
+JOIN
+    Functions F2 ON F1.X = F2.Y AND F1.Y = F2.X
+WHERE
+    F1.X <= F1.Y
+ORDER BY
+    F1.X, F1.Y;
+
+
+
+Task 4
+
+SELECT
+    C.contest_id,
+    C.hacker_id,
+    C.name,
+    IFNULL(SUM(SS.total_submissions), 0) AS total_submissions,
+    IFNULL(SUM(SS.total_accepted_submissions), 0) AS total_accepted_submissions,
+    IFNULL(SUM(VS.total_views), 0) AS total_views,
+    IFNULL(SUM(VS.total_unique_views), 0) AS total_unique_views
+FROM
+    Contests C
+LEFT JOIN
+    Challenges CH ON C.contest_id = CH.contest_id
+LEFT JOIN
+    View_Stats VS ON CH.challenge_id = VS.challenge_id
+LEFT JOIN
+    Submission_Stats SS ON CH.challenge_id = SS.challenge_id
+GROUP BY
+    C.contest_id
+HAVING
+    SUM(SS.total_submissions) > 0 OR
+    SUM(SS.total_accepted_submissions) > 0 OR
+    SUM(VS.total_views) > 0 OR
+    SUM(VS.total_unique_views) > 0
+ORDER BY
+    C.contest_id;
+
+
+
+
+Task 5 
+
+SELECT
+    submission_date,
+    COUNT(DISTINCT hacker_id) AS total_unique_hackers,
+    hacker_id,
+    name
+FROM (
+    SELECT
+        S.submission_date,
+        S.hacker_id,
+        H.name,
+        COUNT(*) AS num_submissions
+    FROM
+        Submissions S
+    JOIN
+        Hackers H ON S.hacker_id = H.hacker_id
+    WHERE
+        S.submission_date >= '2016-03-01' AND S.submission_date <= '2016-03-15'
+    GROUP BY
+        S.submission_date, S.hacker_id
+) AS submission_counts
+WHERE
+    num_submissions = (
+        SELECT
+            MAX(num_submissions)
+        FROM (
+            SELECT
+                submission_date,
+                hacker_id,
+                COUNT(*) AS num_submissions
+            FROM
+                Submissions
+            WHERE
+                submission_date = submission_counts.submission_date
+            GROUP BY
+                submission_date, hacker_id
+        ) AS max_counts
+    )
+GROUP BY
+    submission_date;
+
+
+
+Task 6 
+
+SELECT ROUND(ABS(MAX(LAT_N) - MIN(LAT_N)) + ABS(MAX(LONG_W) - MIN(LONG_W)), 4) AS Manhattan_Distance
+FROM STATION;
+
+
+
+Task 7
+
+SELECT LISTAGG(num, '&') WITHIN GROUP (ORDER BY num) AS primes
+FROM (
+    SELECT LEVEL AS num
+    FROM DUAL
+    CONNECT BY LEVEL <= 1000
+)
+WHERE num > 1
+MINUS
+SELECT LISTAGG(num, '&') WITHIN GROUP (ORDER BY num) AS primes
+FROM (
+    SELECT LEVEL * LEVEL AS num
+    FROM DUAL
+    CONNECT BY LEVEL * LEVEL <= 1000
+)
+ORDER BY 1;
+
+
+
+Task 8
+
+SELECT
+    MAX(CASE WHEN Occupation = 'Doctor' THEN Name END) AS Doctor,
+    MAX(CASE WHEN Occupation = 'Professor' THEN Name END) AS Professor,
+    MAX(CASE WHEN Occupation = 'Singer' THEN Name END) AS Singer,
+    MAX(CASE WHEN Occupation = 'Actor' THEN Name END) AS Actor
+FROM OCCUPATIONS
+GROUP BY Name
+ORDER BY Name;
+
+
+
+Task 9
+
+
+SELECT 
+    N,
+    CASE 
+        WHEN P IS NULL THEN 'Root'
+        WHEN N NOT IN (SELECT DISTINCT P FROM BST) THEN 'Leaf'
+        ELSE 'Inner'
+    END AS NodeType
+FROM BST
+ORDER BY N;
+
+
+
+Task 10
+
+
+SELECT 
+    c.company_code,
+    c.founder,
+    COUNT(DISTINCT lm.lead_manager_code) AS total_lead_managers,
+    COUNT(DISTINCT sm.senior_manager_code) AS total_senior_managers,
+    COUNT(DISTINCT m.manager_code) AS total_managers,
+    COUNT(DISTINCT e.employee_code) AS total_employees
+FROM 
+    Company c
+LEFT JOIN 
+    Lead_Manager lm ON c.company_code = lm.company_code
+LEFT JOIN 
+    Senior_Manager sm ON lm.lead_manager_code = sm.lead_manager_code AND c.company_code = sm.company_code
+LEFT JOIN 
+    Manager m ON sm.senior_manager_code = m.senior_manager_code AND c.company_code = m.company_code
+LEFT JOIN 
+    Employee e ON m.manager_code = e.manager_code AND c.company_code = e.company_code
+GROUP BY 
+    c.company_code, c.founder
+ORDER BY 
+    c.company_code;
+
+
+
+Task 11
+
+SELECT s.Name
+FROM Students s
+JOIN Friends f ON s.ID = f.ID
+JOIN Packages p1 ON s.ID = p1.ID
+JOIN Packages p2 ON f.Friend_ID = p2.ID
+WHERE p2.Salary > p1.Salary
+ORDER BY p2.Salary;
+
+
+
+Task 12
+
+SELECT 
+    Job_Family,
+    Country,
+    SUM(CASE WHEN Country = 'India' THEN Cost END) / SUM(Cost) * 100 AS India_Percentage,
+    SUM(CASE WHEN Country = 'International' THEN Cost END) / SUM(Cost) * 100 AS International_Percentage
+FROM 
+    Job_Cost
+GROUP BY 
+    Job_Family, Country;
+
+
+
+Task 13
+
+SELECT 
+    BU,
+    YearMonth,
+    SUM(Cost) / SUM(Revenue) AS Cost_Revenue_Ratio
+FROM 
+    Cost_Revenue
+GROUP BY 
+    BU, YearMonth;
+
+
+
+Task 14
+
+SELECT 
+    Sub_Band,
+    COUNT(*) AS Headcount,
+    COUNT() * 100.0 / SUM(COUNT()) OVER () AS Percentage
+FROM 
+    Employee_Details
+GROUP BY 
+    Sub_Band;
+
+
+
+Task 15
+
+SELECT TOP 5 *
+FROM Employees;
+
+
+Task 16
+
+UPDATE TableName
+SET Column1 = Column1 + Column2,
+    Column2 = Column1 - Column2,
+    Column1 = Column1 - Column2;
+
+
+
+Task 17
+
+-- Create login
+CREATE LOGIN [username] WITH PASSWORD = 'password';
+
+-- Create user
+CREATE USER [username] FOR LOGIN [username];
+
+-- Provide permissions of DB_owner to the user
+ALTER ROLE db_owner ADD MEMBER [username];
+
+
+
+
+Task 18 
+
+SELECT 
+    BU,
+    FORMAT(Start_Date, 'yyyy-MM') AS Month,
+    SUM(Salary * DATEDIFF(MONTH, Start_Date, DATEADD(DAY, 1, End_Date))) / SUM(DATEDIFF(MONTH, Start_Date, DATEADD(DAY, 1, End_Date))) AS Weighted_Avg_Cost
+FROM 
+    Employee_Details
+GROUP BY 
+    BU, FORMAT(Start_Date, 'yyyy-MM');
+
+
+
+Task 19
+
+SELECT CEILING(AVG(Salary) - AVG(NULLIF(Salary, 0))) AS ErrorAmount
+FROM Employees;
+
+
+
+
+Task 20
+
+INSERT INTO DestinationTable (Column1, Column2)
+SELECT Column1, Column2
+FROM SourceTable
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM DestinationTable
+    WHERE DestinationTable.PrimaryKeyColumn = SourceTable.PrimaryKeyColumn
+);
+
+
+
+
+
